@@ -7,16 +7,18 @@ import serial.tools.list_ports
 # Auto-detect available COM ports
 # ---------------------------
 ports = list(serial.tools.list_ports.comports())
+if not ports:
+    print("No COM ports found! Connect your Arduino.")
+    exit()
+
 print("Available COM ports:")
 for i, port in enumerate(ports):
     print(f"{i}: {port.device}")
 
-# Ask user to select port
 port_index = int(input("Select the COM port index: "))
 COM_PORT = ports[port_index].device
 BAUD_RATE = 9600
 
-# Initialize serial
 ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
 print(f"Connected to {COM_PORT} at {BAUD_RATE} baud")
 
@@ -26,24 +28,33 @@ print(f"Connected to {COM_PORT} at {BAUD_RATE} baud")
 WIDTH, HEIGHT = 800, 600
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("3D Colored Cube Controlled by MPU6050")
+pygame.display.set_caption("3D Triangular Prism Controlled by MPU6050")
 clock = pygame.time.Clock()
 
 # ---------------------------
-# Cube Definition
+# Triangular Prism Definition
 # ---------------------------
-cube_vertices = [
-    [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-    [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+prism_vertices = [
+    [-1, -1, -1], [1, -1, -1], [0, 1, -1],   # bottom triangle
+    [-1, -1, 1], [1, -1, 1], [0, 1, 1]       # top triangle
 ]
-cube_faces = [
-    (0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
-    (2, 3, 7, 6), (1, 2, 6, 5), (0, 3, 7, 4),
+
+prism_faces = [
+    (0, 1, 2),       # bottom triangle
+    (3, 4, 5),       # top triangle
+    (0, 1, 4, 3),    # side rectangle
+    (1, 2, 5, 4),    # side rectangle
+    (2, 0, 3, 5)     # side rectangle
 ]
+
 face_colors = [
-    (255, 0, 0), (0, 255, 0), (0, 0, 255),
-    (255, 255, 0), (0, 255, 255), (255, 0, 255),
+    (255, 0, 0),     # bottom
+    (0, 255, 0),     # top
+    (0, 0, 255),     # side 1
+    (255, 255, 0),   # side 2
+    (0, 255, 255)    # side 3
 ]
+
 SCALE = 100
 OFFSET_X, OFFSET_Y = WIDTH // 2, HEIGHT // 2
 
@@ -51,10 +62,13 @@ OFFSET_X, OFFSET_Y = WIDTH // 2, HEIGHT // 2
 # Functions
 # ---------------------------
 def rotate_point(x, y, z, ax, ay, az):
+    # Rotate around X-axis
     cosx, sinx = math.cos(ax), math.sin(ax)
     y, z = y * cosx - z * sinx, y * sinx + z * cosx
+    # Rotate around Y-axis
     cosy, siny = math.cos(ay), math.sin(ay)
     x, z = x * cosy + z * siny, -x * siny + z * cosy
+    # Rotate around Z-axis
     cosz, sinz = math.cos(az), math.sin(az)
     x, y = x * cosz - y * sinz, x * sinz + y * cosz
     return x, y, z
@@ -73,7 +87,7 @@ running = True
 
 while running:
     screen.fill((0, 0, 0))
-    
+
     # Read Arduino data
     if ser.in_waiting:
         try:
@@ -87,16 +101,16 @@ while running:
             pass
 
     # Rotate vertices
-    transformed_vertices = [rotate_point(*v, ax, ay, az) for v in cube_vertices]
+    transformed_vertices = [rotate_point(*v, ax, ay, az) for v in prism_vertices]
 
-    # Sort faces by depth
-    face_depths = [(i, sum(transformed_vertices[v][2] for v in face)/4) 
-                   for i, face in enumerate(cube_faces)]
+    # Sort faces by depth (Painter's Algorithm)
+    face_depths = [(i, sum(transformed_vertices[v][2] for v in face)/len(face))
+                   for i, face in enumerate(prism_faces)]
     face_depths.sort(key=lambda x: x[1], reverse=True)
 
     # Draw faces
     for face_index, _ in face_depths:
-        face = cube_faces[face_index]
+        face = prism_faces[face_index]
         points = [project(*transformed_vertices[v]) for v in face]
         pygame.draw.polygon(screen, face_colors[face_index], points)
 
